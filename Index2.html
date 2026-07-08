@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>대시보드 - 지뢰찾기</title>
+    <style>
+        :root {
+            --bg-color: #f4f7f6;
+            --nav-bg: #2c3e50;
+            --text-color: #333;
+            --cell-size: 30px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 대시보드 사이드바 네비게이션 */
+        .sidebar {
+            width: 250px;
+            background-color: var(--nav-bg);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            padding-top: 20px;
+            transition: width 0.3s;
+        }
+
+        .sidebar h2 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 1.5rem;
+        }
+
+        .nav-btn {
+            background: none;
+            border: none;
+            color: #bdc3c7;
+            padding: 15px 20px;
+            text-align: left;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .nav-btn:hover {
+            background-color: #34495e;
+            color: white;
+        }
+
+        .nav-btn.active {
+            background-color: #3498db;
+            color: white;
+            font-weight: bold;
+        }
+
+        /* 메인 콘텐츠 영역 */
+        .content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 지뢰찾기 게임 UI */
+        .game-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 400px;
+            margin: 0 auto 20px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        #reset-btn {
+            padding: 8px 16px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        #reset-btn:hover {
+            background-color: #2980b9;
+        }
+
+        .board {
+            display: grid;
+            gap: 2px;
+            background-color: #ccc;
+            padding: 2px;
+            border: 2px solid #999;
+            margin: 0 auto;
+            width: max-content;
+        }
+
+        .cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            background-color: #eee;
+            border: 2px outset #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .cell.revealed {
+            background-color: #ddd;
+            border: 1px solid #ccc;
+            cursor: default;
+        }
+
+        .cell.mine {
+            background-color: #e74c3c;
+            border: 1px solid #c0392b;
+        }
+
+        /* 반응형: 모바일 화면에서 사이드바 상단으로 이동 */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+            }
+            .sidebar {
+                width: 100%;
+                height: auto;
+                flex-direction: row;
+                justify-content: space-around;
+                padding: 10px 0;
+            }
+            .sidebar h2 {
+                display: none;
+            }
+            .nav-btn {
+                text-align: center;
+                padding: 10px;
+            }
+            :root {
+                --cell-size: 25px; /* 모바일에서 셀 크기 축소 */
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="sidebar">
+        <h2>내 대시보드</h2>
+        <button class="nav-btn active" onclick="switchTab('app1', this)">1. 지뢰찾기</button>
+        <button class="nav-btn" onclick="switchTab('app2', this)">2. 두 번째 앱</button>
+    </nav>
+
+    <main class="content">
+        <div id="app1" class="tab-content active">
+            <h1 style="text-align: center; margin-bottom: 20px;">지뢰찾기</h1>
+            
+            <div class="game-header">
+                <div>지뢰: <span id="mine-count">10</span></div>
+                <button id="reset-btn" onclick="initGame()">다시 시작</button>
+            </div>
+            
+            <div id="board" class="board"></div>
+        </div>
+
+        <div id="app2" class="tab-content">
+            <h1>두 번째 앱</h1>
+            <p style="margin-top: 10px; color: #666;">이곳에 두 번째 앱이 들어갈 예정입니다.</p>
+        </div>
+    </main>
+
+    <script>
+        // --- 탭 전환 로직 ---
+        function
