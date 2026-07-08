@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>매치-3 과일 퍼즐</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
+
+        body {
+            font-family: 'Jua', sans-serif;
+            background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+            touch-action: manipulation;
+        }
+
+        #game-board {
+            position: relative;
+            width: 100%;
+            max-width: 450px;
+            aspect-ratio: 1 / 1;
+            background-color: #ffffff;
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            /* 모바일에서 스와이프 시 화면 스크롤 방지 */
+            touch-action: none; 
+            margin: 0 auto;
+        }
+
+        .candy {
+            position: absolute;
+            width: 12.5%; /* 100% / 8 columns */
+            height: 12.5%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2rem;
+            cursor: pointer;
+            transition: top 0.3s ease-in-out, left 0.3s ease-in-out, transform 0.2s;
+            user-select: none;
+            -webkit-user-select: none;
+            will-change: top, left, transform;
+            border-radius: 50%;
+        }
+
+        /* 반응형 폰트 크기 조정 */
+        @media (max-width: 400px) {
+            .candy { font-size: 1.5rem; }
+        }
+
+        .candy.selected {
+            background-color: rgba(0, 0, 0, 0.1);
+            transform: scale(1.1);
+        }
+
+        .candy.matched {
+            transform: scale(0);
+            opacity: 0;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- 헤더 / 점수판 -->
+    <div class="w-full max-w-[450px] flex justify-between items-end mb-4 glass-panel p-4 rounded-xl shadow-sm">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800 drop-shadow-sm">과일 팡팡! 🍎</h1>
+            <p class="text-sm text-gray-500 mt-1">3개 이상 맞춰보세요</p>
+        </div>
+        <div class="text-right flex items-end gap-6">
+            <div class="text-center">
+                <div class="text-sm text-gray-500">남은 시간</div>
+                <div id="timer" class="text-4xl font-bold text-red-500">60</div>
+            </div>
+            <div class="text-center">
+                <div class="text-sm text-gray-500">점수</div>
+                <div id="score" class="text-4xl font-bold text-orange-500">0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 게임 보드 -->
+    <div id="game-board">
+        <!-- 과일 아이템들이 JavaScript를 통해 이곳에 동적으로 추가됩니다 -->
+    </div>
+
+    <!-- 하단 컨트롤 -->
+    <div class="w-full max-w-[450px] mt-6 flex justify-between items-center">
+        <button id="restart-btn" class="bg-gradient-to-r from-orange-400 to-red-500 hover:from-orange-500 hover:to-red-600 text-white px-6 py-3 rounded-full font-bold shadow-lg transition-transform active:scale-95">
+            다시 시작
+        </button>
+        <p class="text-gray-400 text-sm">드래그 또는 탭하여 교환</p>
+    </div>
+
+    <!-- 메시지 모달 (알림용) -->
+    <div id="message-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 transition-opacity">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl text-center transform scale-95 transition-transform">
+            <h2 id="message-title" class="text-3xl font-bold text-gray-800 mb-2">게임 오버!</h2>
+            <p id="message-text" class="text-gray-600 mb-6">최종 점수: <span id="final-score" class="font-bold text-orange-500 text-xl"></span>점</p>
+            <button onclick="closeModal()" class="bg-orange-500 text-white px-6 py-2 rounded-full font-bold hover:bg-orange-600 active:scale-95 transition-all">
+                확인
+            </button>
+        </div>
+    </div>
+
+    <!-- 시작 화면 모달 -->
+    <div id="start-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl text-center transform transition-transform">
+            <h2 class="text-4xl font-bold text-gray-800 mb-4">과일 팡팡! 🍎</h2>
+            <p class="text-gray-600 mb-8">60초 안에 최대한 많은 과일을 맞추세요!</p>
+            <button id="start-game-btn" class="bg-gradient-to-r from-green-400 to-green-600 text-white px-8 py-3 rounded-full font-bold text-xl shadow-lg hover:scale-105 active:scale-95 transition-all">
+                게임 시작
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const BOARD_SIZE = 8;
+        const CANDY_TYPES = ['🍎', '🍊', '🍇', '🍉', '🍓', '🍌'];
+        const ANIMATION_DURATION = 300; // 애니메이션 지속 시간 (ms)
+        const GAME_TIME = 60; // 게임 제한 시간 (초)
+
+        let board = [];
+        let items = []; // DOM에 표시되는 모든 아이템 객체를 관리하는 배열
+        let score = 0;
+        let timeLeft = GAME_TIME;
+        let timerInterval = null;
+        let nextItemId = 0;
+        let isAnimating = false; // 애니메이션 중 사용자 입력 방지 플래그
+        let isGameOver = false; // 게임 종료 상태
+
+        // 입력 관련 변수
+        let selectedItem = null;
+        let startX, startY;
+
+        const boardEl = document.getElementById('game-board');
+        const scoreEl = document.getElementById('score');
+        const timerEl = document.getElementById('timer');
+
+        // Promise 기반의 대기 함수 (애니메이션 동기화용)
+        const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+        // 타이머 시작
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timeLeft = GAME_TIME;
+            updateTimerDisplay();
+            
+            timerInterval = setInterval(() => {
+                if (isGameOver) return;
+                
+                timeLeft--;
+                updateTimerDisplay();
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            timerEl.innerText = timeLeft;
+            if (timeLeft <= 10) {
+                timerEl.classList.add('animate-pulse');
+            } else {
+                timerEl.classList.remove('animate-pulse');
+            }
+        }
+
+        function endGame() {
+            isGameOver = true;
+            clearInterval(timerInterval);
+            isAnimating = true; // 더 이상 입력받지 않도록 차단
+            showModal("시간 초과!", score);
+        }
+
+        // 게임 초기화
+        async function initGame() {
+            isAnimating = true;
+            isGameOver = false;
+            score = 0;
+            timeLeft = GAME_TIME;
+            scoreEl.innerText = score;
+            updateTimerDisplay();
+            
+            boardEl.innerHTML = '';
+            items = [];
+            board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(null));
+
+            // 보드 채우기 (초기 매칭 방지)
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    let type = getRandomType(r, c);
+                    createItem(r, c, type);
+                }
+            }
+            
+            renderBoard();
+            await wait(ANIMATION_DURATION);
+            isAnimating = false;
+            
+            startTimer(); // 게임 초기화 완료 후 타이머 시작
+        }
+
+        // 초기 생성 시 매치되는 경우가 없도록 타입 선택
+        function getRandomType(r, c) {
+            let type;
+            do {
+                type = CANDY_TYPES[Math.floor(Math.random() * CANDY_TYPES.length)];
+            } while (
+                (c >= 2 && board[r][c-1]?.type === type && board[r][c-2]?.type === type) ||
+                (r >= 2 && board[r-1][c]?.type === type && board[r-2][c]?.type === type)
+            );
+            return type;
+        }
+
+        // 아이템(과일) 객체 생성 및 보드에 등록
+        function createItem(r, c, type) {
+            const item = {
+                id: `item_${nextItemId++}`,
+                type: type,
+                row: r,
+                col: c,
+                element: document.createElement('div')
+            };
+            
+            item.element.className = 'candy';
+            item.element.innerText = type;
+            // 이벤트 리스너 추가
+            item.element.addEventListener('pointerdown', (e) => onPointerDown(e, item));
+            
+            boardEl.appendChild(item.element);
+            board[r][c] = item;
+            items.push(item);
+
+            // 초기 위치는 위에서 떨어지는 효과를 위해 화면 밖으로 설정 (렌더링 시 정상 위치로 이동)
+            item.element.style.top = `${(r - BOARD_SIZE) * 12.5}%`;
+            item.element.style.left = `${c * 12.5}%`;
+            
+            return item;
+        }
+
+        // 아이템들의 현재 row, col 값을 기반으로 DOM 요소의 위치 업데이트
+        function renderBoard() {
+            items.forEach(item => {
+                if (item.row !== null && item.col !== null) {
+                    item.element.style.top = `${item.row * 12.5}%`;
+                    item.element.style.left = `${item.col * 12.5}%`;
+                }
+            });
+        }
+
+        // --- 입력 처리 (드래그 및 클릭) ---
+
+        function onPointerDown(e, item) {
+            if (isAnimating || isGameOver) return; // 게임 종료 시 입력 차단
+            e.preventDefault(); // 스크롤 등 기본 동작 방지
+
+            startX = e.clientX;
+            startY = e.clientY;
+
+            // 이미 선택된 아이템이 있는 경우 (클릭-클릭 교환 시도)
+            if (selectedItem) {
+                if (selectedItem === item) {
+                    // 같은 것을 다시 클릭하면 선택 해제
+                    clearSelection();
+                    return;
+                }
+                
+                if (isAdjacent(selectedItem, item)) {
+                    attemptSwap(selectedItem, item);
+                    clearSelection();
+                } else {
+                    // 인접하지 않은 것을 클릭하면 선택 변경
+                    clearSelection();
+                    selectItem(item);
+                }
+            } else {
+                // 처음 클릭(또는 터치)한 경우
+                selectItem(item);
+                
+                // 드래그(스와이프)를 위한 이벤트 등록
+                document.addEventListener('pointerup', onPointerUp);
+                document.addEventListener('pointercancel', onPointerUp);
+            }
+        }
+
+        function onPointerUp(e) {
+            document.removeEventListener('pointerup', onPointerUp);
+            document.removeEventListener('pointercancel', onPointerUp);
+
+            if (!selectedItem || isAnimating) return;
+
+            const endX = e.clientX;
+            const endY = e.clientY;
+            
+            const dx = endX - startX;
+            const dy = endY - startY;
+            const SWIPE_THRESHOLD = 20; // 픽셀 단위 임계값
+
+            if (Math.abs(dx) > SWIPE_THRESHOLD || Math.abs(dy) > SWIPE_THRESHOLD) {
+                // 스와이프 감지됨
+                let targetRow = selectedItem.row;
+                let targetCol = selectedItem.col;
+
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    // 수평 이동
+                    targetCol += dx > 0 ? 1 : -1;
+                } else {
+                    // 수직 이동
+                    targetRow += dy > 0 ? 1 : -1;
+                }
+
+                // 타겟이 보드 범위 내인지 확인
+                if (targetRow >= 0 && targetRow < BOARD_SIZE && targetCol >= 0 && targetCol < BOARD_SIZE) {
+                    const targetItem = board[targetRow][targetCol];
+                    attemptSwap(selectedItem, targetItem);
+                }
+                clearSelection();
+            }
+        }
+
+        function selectItem(item) {
+            selectedItem = item;
+            item.element.classList.add('selected');
+        }
+
+        function clearSelection() {
+            if (selectedItem) {
+                selectedItem.element.classList.remove('selected');
+                selectedItem = null;
+            }
+        }
+
+        function isAdjacent(item1, item2) {
+            const rDiff = Math.abs(item1.row - item2.row);
+            const cDiff = Math.abs(item1.col - item2.col);
+            return (rDiff === 1 && cDiff === 0) || (rDiff === 0 && cDiff === 1);
+        }
+
+        // --- 게임 핵심 로직 ---
+
+        async function attemptSwap(item1, item2) {
+            isAnimating = true;
+
+            // 1. 시각적 위치 교환
+            swapData(item1, item2);
+            renderBoard();
+            await wait(ANIMATION_DURATION);
+
+            // 2. 매치 확인
+            const matches = findMatches();
+
+            if (matches.length > 0) {
+                // 매치가 성공한 경우 연쇄 반응 시작
+                await processMatches(matches);
+            } else {
+                // 매치가 없는 경우 다시 원래대로 되돌림
+                swapData(item1, item2);
+                renderBoard();
+                await wait(ANIMATION_DURATION);
+                isAnimating = false;
+            }
+        }
+
+        function swapData(item1, item2) {
+            const tempRow = item1.row;
+            const tempCol = item1.col;
+            
+            item1.row = item2.row;
+            item1.col = item2.col;
+            
+            item2.row = tempRow;
+            item2.col = tempCol;
+
+            board[item1.row][item1.col] = item1;
+            board[item2.row][item2.col] = item2;
+        }
+
+        function findMatches() {
+            let matchedItems = new Set();
+
+            // 가로 검사
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE - 2; c++) {
+                    let i1 = board[r][c];
+                    let i2 = board[r][c+1];
+                    let i3 = board[r][c+2];
+                    
+                    if (i1 && i2 && i3 && i1.type === i2.type && i2.type === i3.type) {
+                        matchedItems.add(i1); matchedItems.add(i2); matchedItems.add(i3);
+                    }
+                }
+            }
+
+            // 세로 검사
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                for (let r = 0; r < BOARD_SIZE - 2; r++) {
+                    let i1 = board[r][c];
+                    let i2 = board[r+1][c];
+                    let i3 = board[r+2][c];
+                    
+                    if (i1 && i2 && i3 && i1.type === i2.type && i2.type === i3.type) {
+                        matchedItems.add(i1); matchedItems.add(i2); matchedItems.add(i3);
+                    }
+                }
+            }
+
+            return Array.from(matchedItems);
+        }
+
+        async function processMatches(matches) {
+            // 1. 점수 증가 및 매치된 아이템 처리
+            score += matches.length * 10;
+            animateScore(score);
+            
+            matches.forEach(item => {
+                item.element.classList.add('matched');
+                board[item.row][item.col] = null; // 보드에서 제거
+                
+                // items 배열에서도 제거 준비
+                item.row = null;
+                item.col = null;
+            });
+
+            await wait(ANIMATION_DURATION);
+
+            // 돔에서 삭제 및 items 배열 정리
+            matches.forEach(item => {
+                if (item.element.parentNode) {
+                    item.element.parentNode.removeChild(item.element);
+                }
+            });
+            items = items.filter(item => item.row !== null);
+
+            // 2. 중력 적용 (위에서 아래로 떨어짐)
+            let hasMoved = false;
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                let emptySpaces = 0;
+                for (let r = BOARD_SIZE - 1; r >= 0; r--) {
+                    if (board[r][c] === null) {
+                        emptySpaces++;
+                    } else if (emptySpaces > 0) {
+                        // 아이템을 아래로 이동
+                        let item = board[r][c];
+                        board[r][c] = null;
+                        board[r + emptySpaces][c] = item;
+                        item.row = r + emptySpaces;
+                        hasMoved = true;
+                    }
+                }
+
+                // 3. 빈 칸에 새로운 과일 생성
+                for (let r = 0; r < emptySpaces; r++) {
+                    // 위에서부터 순서대로 떨어지도록 row를 0부터 시작하여 채움
+                    let type = CANDY_TYPES[Math.floor(Math.random() * CANDY_TYPES.length)];
+                    let newItem = createItem(r, c, type);
+                    
+                    // 시작 위치를 보드 위로 설정 (CSS 애니메이션용)
+                    newItem.element.style.top = `${(r - emptySpaces) * 12.5}%`;
+                    hasMoved = true;
+                }
+            }
+
+            if (hasMoved) {
+                // 강제 렌더링(리플로우)를 발생시켜 CSS Transition이 작동하게 함
+                boardEl.offsetHeight; 
+                renderBoard();
+                await wait(ANIMATION_DURATION + 100); // 떨어지는 시간 대기
+            }
+
+            // 4. 연쇄 반응(콤보) 확인
+            const newMatches = findMatches();
+            if (newMatches.length > 0) {
+                await processMatches(newMatches);
+            } else {
+                isAnimating = false; // 모든 처리가 끝나면 입력 허용
+                checkPossibleMoves();
+            }
+        }
+
+        // 더 이상 매치할 수 있는 경우가 없는지(데드락) 확인하는 함수
+        function checkPossibleMoves() {
+            if (isGameOver) return false; // 게임 오버 상태면 검사 건너뜀
+
+            // (간단한 구현을 위해 여기서는 콘솔에만 기록. 실제 상용 게임에서는 셔플 등의 로직 필요)
+            // 가상으로 스왑해보고 match가 하나라도 나오면 가능한 수단이 있는 것
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (c < BOARD_SIZE - 1) { // 우측 스왑 테스트
+                        swapData(board[r][c], board[r][c+1]);
+                        if (findMatches().length > 0) {
+                            swapData(board[r][c], board[r][c+1]); // 원복
+                            return true;
+                        }
+                        swapData(board[r][c], board[r][c+1]);
+                    }
+                    if (r < BOARD_SIZE - 1) { // 하단 스왑 테스트
+                        swapData(board[r][c], board[r+1][c]);
+                        if (findMatches().length > 0) {
+                            swapData(board[r][c], board[r+1][c]); // 원복
+                            return true;
+                        }
+                        swapData(board[r][c], board[r+1][c]);
+                    }
+                }
+            }
+            
+            // 더 이상 움직일 수 없다면
+            showModal("움직일 과일이 없습니다!", score);
+            isGameOver = true;
+            clearInterval(timerInterval);
+            return false;
+        }
+
+        // 점수 팝업 애니메이션
+        function animateScore(newScore) {
+            scoreEl.innerText = newScore;
+            scoreEl.classList.add('scale-150', 'text-red-500');
+            setTimeout(() => {
+                scoreEl.classList.remove('scale-150', 'text-red-500');
+            }, 300);
+        }
+
+        // 모달 관리
+        function showModal(title, finalScore) {
+            document.getElementById('message-title').innerText = title;
+            document.getElementById('final-score').innerText = finalScore;
+            const modal = document.getElementById('message-modal');
+            modal.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('message-modal');
+            modal.classList.add('hidden');
+            initGame();
+        }
+
+        // 이벤트 리스너 등록
+        document.getElementById('restart-btn').addEventListener('click', initGame);
+        
+        // 시작 버튼 이벤트 리스너 추가
+        document.getElementById('start-game-btn').addEventListener('click', () => {
+            document.getElementById('start-modal').classList.add('hidden');
+            initGame();
+        });
+
+        // 자동 시작 로직 제거
+        // window.onload = initGame; 
+
+    </script>
+</body>
+</html>
